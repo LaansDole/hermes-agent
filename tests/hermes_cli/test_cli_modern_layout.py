@@ -205,6 +205,32 @@ def test_tab_completes_ghost_suggestion_before_queueing():
         assert tab.filter()  # control: nothing left to complete, so Tab queues
 
 
+@pytest.mark.asyncio
+async def test_idle_tab_ignores_a_stale_ghost_suggestion_mid_text():
+    """Idle Tab with the cursor moved inside the text: prompt_toolkit keeps the stale suggestion but
+    hides it, so Tab leaves the text alone and opens normal completion for the word at the cursor."""
+    from types import SimpleNamespace
+    from prompt_toolkit.application import Application
+    from prompt_toolkit.application.current import set_app
+    from prompt_toolkit.auto_suggest import Suggestion
+    from prompt_toolkit.buffer import Buffer
+    from prompt_toolkit.completion import WordCompleter
+    from prompt_toolkit.document import Document
+    from prompt_toolkit.layout import BufferControl, Layout, Window
+    from cli import HermesCLI
+    from tests.waiting import async_wait_until
+
+    buf = Buffer(document=Document("fix the fla"), completer=WordCompleter(["fixture"]))
+    buf.suggestion = Suggestion("ky test")
+    buf.cursor_position = 3
+    with set_app(Application(layout=Layout(Window(BufferControl(buffer=buf))))):
+        HermesCLI._tui_handle_tab(None, SimpleNamespace(current_buffer=buf))
+        assert buf.text == "fix the fla"
+        completions = await async_wait_until(lambda: buf.complete_state and buf.complete_state.completions,
+                                             what="Tab to open the completion menu")
+    assert [c.text for c in completions] == ["fixture"]
+
+
 def test_long_user_message_soft_wraps_so_a_resize_reflows_it(monkeypatch):
     """The glyph layout's echo of a long prompt is one logical line per source line: the terminal
     wraps it, so widening the window re-flows it instead of keeping old-width breaks."""
